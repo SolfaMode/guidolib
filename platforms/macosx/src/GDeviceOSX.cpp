@@ -566,15 +566,18 @@ void GDeviceOSX::DrawMusicSymbol( float x, float y, unsigned int inSymbolID )
 	GFontOSX * macFont = (GFontOSX *)mCurrMusicFont;
 	assert(macFont);
 	CGGlyph glyph = macFont->GetGlyph( inSymbolID );
+    float orgX = x;
+    float orgY = y;
+
+    float w = 0;
+    float h = 0;
+    float baseline = 0;
+    mCurrMusicFont->GetExtent( inSymbolID, &w, &h, this );
 
 	// - Calculate string dimensions		
 	// - Perform text alignement. TODO: use precalculated values.
 	if( mTextAlign != kAlignBaseLeft )
-	{	
-		float w = 0;
-		float h = 0;
-		float baseline = 0;
-        mCurrMusicFont->GetExtent( inSymbolID, &w, &h, this );
+	{
 		if( mTextAlign & kAlignBottom )	// Vertical align
 			y -= baseline; 
 		else if( mTextAlign & kAlignTop )
@@ -586,15 +589,51 @@ void GDeviceOSX::DrawMusicSymbol( float x, float y, unsigned int inSymbolID )
 			x -= (w * float(0.5));
 	}
 
-    // Uncommented code does not work. Core text uses different coordinates.
-    // CGPoint point = CGPointMake(x, y);
-    // CTFontDrawGlyphs(macFont->fCTFont, &glyph, &point, 1, mContext);
-    ::CGContextSetFont(mContext, macFont->GetCGFont());
-    ::CGContextSetFontSize(mContext, macFont->GetSize());
-
 	// - Draw text
 	PushFillColor( VGColor(mTextColor.mRed, mTextColor.mGreen, mTextColor.mBlue, mTextColor.mAlpha) );
-	::CGContextShowGlyphsAtPoint(mContext, x, y, &glyph, 1 );
+    static bool show1 = false;
+    static bool show2 = false;
+    static bool show3 = true;
+    if (show1) {
+        // Simply works.
+        ::CGContextSetFont(mContext, macFont->GetCGFont());
+        ::CGContextSetFontSize(mContext, macFont->GetSize());
+        ::CGContextShowGlyphsAtPoint(mContext, x, y, &glyph, 1 );
+    }
+    if (show2) {
+        // Code does not work. Core text uses different coordinates. Flips some elements.
+        CGPoint point = CGPointMake(x, y);
+        // CTFontDrawGlyphs(macFont->fCTFont, &glyph, &point, 1, mContext);
+        CGContextSaveGState(mContext);
+        //CGContextSetTextMatrix(mContext,CGAffineTransformMake(1.0,0.0,0.0,-1.0,x,y));
+        CGContextSetTextPosition(mContext, 0, 0);
+        CTFontDrawGlyphs(macFont->GetCTFont(), &glyph, &point, 1, mContext); // Check
+        CGContextRestoreGState(mContext);
+    }
+    if (show3) {
+        // Works with magic 240 and produces same results as show1.
+        CGContextSaveGState(mContext);
+        UniChar uni = inSymbolID;
+        CFStringRef string = CFStringCreateWithCharacters(NULL, &uni, 1);
+        CFAttributedStringRef attrString = CFAttributedStringCreate(NULL, string, macFont->GetCTFontDictionary());
+        CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString (attrString);
+        CGSize suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, /* Framesetter */
+                                                                            CFRangeMake(0, 1), /* String range (entire string) */
+                                                                            NULL, /* Frame attributes */
+                                                                            CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), /* Constraints (CGFLOAT_MAX indicates unconstrained) */
+                                                                            NULL /* Gives the range of string that fits into the constraints, doesn't matter in your situation */
+                                                                            );
+        CGRect rect = CGRectMake(x, y-240, suggestedSize.width, suggestedSize.height); // Magic 240? FontSize is 200, suggested.height = 499
+        CGPathRef path = CGPathCreateWithRect(rect, NULL);
+        CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+        CTFrameDraw(frame, mContext);
+        CFRelease(frame);
+        CFRelease(path);
+        CFRelease(framesetter);
+        CFRelease(attrString);
+        CFRelease(string);
+        CGContextRestoreGState(mContext);
+    }
 	PopFillColor();
 }
 
