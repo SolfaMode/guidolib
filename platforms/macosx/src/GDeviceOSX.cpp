@@ -593,7 +593,9 @@ void GDeviceOSX::DrawMusicSymbol( float x, float y, unsigned int inSymbolID )
 	PushFillColor( VGColor(mTextColor.mRed, mTextColor.mGreen, mTextColor.mBlue, mTextColor.mAlpha) );
     static bool show1 = false;
     static bool show2 = false;
-    static bool show3 = true;
+    static bool show2a = true;
+    static bool show2b = false;
+    static bool show3 = false;
     if (show1) {
         // Simply works.
         ::CGContextSetFont(mContext, macFont->GetCGFont());
@@ -610,9 +612,36 @@ void GDeviceOSX::DrawMusicSymbol( float x, float y, unsigned int inSymbolID )
         CTFontDrawGlyphs(macFont->GetCTFont(), &glyph, &point, 1, mContext); // Check
         CGContextRestoreGState(mContext);
     }
+    if (show2a) { // works: CTFontDrawGlyphs with point in text coordinates.
+        CGFloat color[4] = { 0, 1, 0, 1};
+        ::CGContextSetFillColor(mContext, color);
+        CGPoint pointInUserCoordinates = CGPointMake(x, y);
+        CGAffineTransform textMatrix = CGContextGetTextMatrix(mContext);
+        CGAffineTransform inverse = CGAffineTransformInvert(textMatrix);
+        CGPoint pointInTextCoordinates = CGPointApplyAffineTransform(pointInUserCoordinates, inverse);
+        CTFontDrawGlyphs(macFont->GetCTFont(), &glyph, &pointInTextCoordinates, 1, mContext);
+    }
+    if (show2b) { // works: CGContextShowGlyphsAtPositions with point in text coordinates
+        CGFloat color[4] = { 0, 0, 1, 1};
+        ::CGContextSetFillColor(mContext, color);
+        CGContextSaveGState(mContext);
+        ::CGContextSetFont(mContext, macFont->GetCGFont());
+        ::CGContextSetFontSize(mContext, macFont->GetSize());
+        CGPoint point = CGPointMake(x, y);
+        CGPoint zero = CGPointZero;
+        CGAffineTransform textMatrix = CGContextGetTextMatrix(mContext);
+        CGAffineTransform inverse = CGAffineTransformInvert(textMatrix);
+        CGPoint pointInTextCoordinates = CGPointApplyAffineTransform(point, inverse);
+        // CGPoint textPos = CGContextGetTextPosition(mContext);
+        CGContextShowGlyphsAtPositions(mContext, &glyph, &pointInTextCoordinates, 1);
+        CGContextRestoreGState(mContext);
+    }
+
     if (show3) {
         // Works with magic 240 and produces same results as show1.
         CGContextSaveGState(mContext);
+        CGFloat color[4] = { 1, 0, 0, 1};
+        ::CGContextSetFillColor(mContext, color);
         UniChar uni = inSymbolID;
         CFStringRef string = CFStringCreateWithCharacters(NULL, &uni, 1);
         CFAttributedStringRef attrString = CFAttributedStringCreate(NULL, string, macFont->GetCTFontDictionary());
